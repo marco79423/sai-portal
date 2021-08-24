@@ -1,0 +1,12 @@
+app:
+  name: Sai Portal
+  log_level: debug
+  address: :80
+
+  enabled_features:
+    - redirects
+
+features:
+  redirects:
+    origin_host: https://marco79423.net
+    target_host: https://blog.marco79423.net

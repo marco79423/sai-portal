@@ -1,0 +1,64 @@
+image: reg.paradise-soft.com.tw:5000/dind-with-curl
+
+stages:
+  - test
+  - build-and-push
+  - build-failure
+
+run-tests:
+  stage: test
+  image: reg.paradise-soft.com.tw:5000/golang:1.14
+  tags:
+    - docker
+  before_script:
+    - export GOFLAGS=-mod=vendor
+    - go get -u github.com/jstemmer/go-junit-report
+    - go mod vendor
+  script:
+    - go test -v ./... 2>&1 | go-junit-report -set-exit-code > report.xml
+  artifacts:
+    when: always
+    reports:
+      junit: report.xml
+
+run-tests-with-coverage:
+  stage: test
+  image: reg.paradise-soft.com.tw:5000/golang:1.14
+  tags:
+    - docker
+  before_script:
+    - export GOFLAGS=-mod=vendor
+  script:
+    - go test -coverprofile=coverage.out.tmp -coverpkg=./... ./...
+    - cat coverage.out.tmp | grep -v -E "mock_*|*_gen.go" > coverage.out
+    - go tool cover -func=coverage.out
+    - go tool cover -html=coverage.out -o coverage.html
+  artifacts:
+    paths:
+      - coverage.html
+    expire_in: 30 days
+
+build-and-push:
+  stage: build-and-push
+  only:
+    - develop
+    - tags
+  tags:
+    - docker
+  before_script:
+    - sh gitlab-ci/slack_start_notify.sh $CI_PIPELINE_ID $CI_COMMIT_REF_NAME $GITLAB_USER_EMAIL $CI_PROJECT_NAME
+  script:
+    - server=reg.paradise-soft.com.tw:5000
+    - appname=sbk-watchdog
+    - docker build . -t $server/$appname:$CI_COMMIT_REF_NAME
+    - docker push $server/$appname:$CI_COMMIT_REF_NAME
+    - sh gitlab-ci/slack_success_notify.sh $CI_PIPELINE_ID $CI_COMMIT_REF_NAME $GITLAB_USER_EMAIL $CI_PROJECT_NAME
+
+build-failure:
+  stage: build-failure
+  only:
+    - develop
+    - tags
+  script:
+    - sh gitlab-ci/slack_fail_notify.sh $CI_PIPELINE_ID $CI_COMMIT_REF_NAME $GITLAB_USER_EMAIL $CI_PROJECT_NAME
+  when: on_failure
